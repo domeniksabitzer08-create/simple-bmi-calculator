@@ -1,5 +1,9 @@
+import 'dart:async';
 import 'dart:developer' show log;
+import 'dart:ffi';
+import 'dart:math' show pow;
 
+import 'package:syncfusion_flutter_gauges/gauges.dart';
 import 'package:flutter/material.dart';
 
 class BmiView extends StatefulWidget {
@@ -24,12 +28,10 @@ class _BmiViewState extends State<BmiView> {
 
   void _setHeight(double? height) {
     _height = height ?? _height;
-    log(_height.toString());
   }
 
   void _setWeight(double? weight) {
     _weight = weight ?? _weight;
-    log(_weight.toString());
   }
 
   @override
@@ -38,12 +40,16 @@ class _BmiViewState extends State<BmiView> {
       body: Column(
         children: [
           AnimatedHeadline(isBig: _bmiValueIsNull),
-          Padding(
-            padding: EdgeInsetsGeometry.directional(top: 40),
+          AnimatedPadding(
+            duration: Duration(milliseconds: 600),
+            padding: EdgeInsetsGeometry.directional(
+              top: _bmiValueIsNull ? 40 : 20,
+              bottom: _bmiValueIsNull ? 0 : 20,
+            ),
             child: Row(
               children: [
                 AppInputField(
-                  text: "Height",
+                  text: "Height in cm",
                   callback: _setHeight,
                 ),
                 AppInputField(
@@ -53,13 +59,16 @@ class _BmiViewState extends State<BmiView> {
               ],
             ),
           ),
-          Padding(
-            padding: EdgeInsetsGeometry.directional(top: 50),
+          AnimatedPadding(
+            duration: Duration(milliseconds: 600),
+            padding: EdgeInsetsGeometry.directional(
+              top: _bmiValueIsNull ? 50 : 5,
+            ),
             child: ElevatedButton(
               onPressed: () {
                 if (_height != null && _weight != null) {
                   setState(() {
-                    _bmi = _weight! / _height!;
+                    _bmi = _weight! / pow(_height! / 100, 2);
                     _bmiValueIsNull = false;
                     _animateHeadline;
                   });
@@ -75,10 +84,29 @@ class _BmiViewState extends State<BmiView> {
               ),
             ),
           ),
+          ResultText(bmi: _bmi),
+          (_bmi != null) ? BmiGauge(bmi: _bmi) : SizedBox.shrink(),
+          (_bmi != null)
+              ? FadeInWidget(
+                  conditon: _bmi != null,
+                  child: AppText(
+                    data: getCategory(_bmi!),
+                    fontSize: 30,
+                  ),
+                )
+              : SizedBox.shrink(),
         ],
       ),
     );
   }
+}
+
+String getCategory(double bmi) {
+  if (bmi < 18.5) return "Underweight";
+  if (bmi < 25) return "Normal";
+  if (bmi < 30) return "Overweight";
+  if (bmi < 40) return "Obese";
+  return "Severely obese";
 }
 
 class AnimatedHeadline extends StatefulWidget {
@@ -97,7 +125,7 @@ class _AnimatedHeadlineState extends State<AnimatedHeadline> {
       //mainAxisAlignment: MainAxisAlignment.center,
       children: [
         AnimatedPadding(
-          duration: Duration(milliseconds: 600),
+          duration: Duration(milliseconds: 100),
           curve: Curves.fastOutSlowIn,
           padding: EdgeInsetsGeometry.directional(top: widget.isBig ? 120 : 40),
           child: Align(
@@ -164,12 +192,18 @@ class AppInputField extends StatelessWidget {
     return Expanded(
       child: Column(
         children: [
-          AppText(data: text),
+          Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: AppText(
+              data: text,
+              fontSize: 19,
+            ),
+          ),
           Container(
             width: 150,
             height: 40,
             decoration: BoxDecoration(
-              color: Colors.amber,
+              color: Theme.of(context).colorScheme.onPrimary,
               borderRadius: BorderRadius.circular(20),
             ),
             child: Padding(
@@ -177,10 +211,17 @@ class AppInputField extends StatelessWidget {
                 vertical: 12,
                 horizontal: 10,
               ),
-              child: TextField(
-                onChanged: (value) => callback(double.tryParse(value)),
-                decoration: InputDecoration(
-                  border: InputBorder.none,
+              child: Center(
+                child: Expanded(
+                  child: TextField(
+                    onChanged: (value) => callback(double.tryParse(value)),
+                    decoration: InputDecoration(
+                      border: InputBorder.none,
+                    ),
+                    style: TextStyle(
+                      fontSize: 20,
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -188,5 +229,152 @@ class AppInputField extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+class FadeInWidget extends StatefulWidget {
+  final bool conditon;
+  final Widget child;
+  const FadeInWidget({super.key, required this.child, required this.conditon});
+
+  @override
+  State<FadeInWidget> createState() => _FadeInWidgetState();
+}
+
+class _FadeInWidgetState extends State<FadeInWidget> {
+  @override
+  Widget build(BuildContext context) {
+    double opacity = 0;
+    void animate() {
+      setState(() {
+        opacity = 1;
+      });
+    }
+
+    if (widget.conditon) animate();
+    return AnimatedOpacity(
+      opacity: opacity,
+      duration: Duration(seconds: 1),
+      child: widget.child,
+    );
+  }
+}
+
+class ResultText extends StatefulWidget {
+  final double? bmi;
+  const ResultText({super.key, required this.bmi});
+
+  @override
+  State<ResultText> createState() => _ResultTextState();
+}
+
+class _ResultTextState extends State<ResultText> {
+  @override
+  Widget build(BuildContext context) {
+    return FadeInWidget(
+      conditon: widget.bmi != null,
+      child: Column(
+        children: [
+          AppText(
+            data: "BMI:",
+            fontSize: (widget.bmi != null) ? 60 : 0,
+          ),
+          AppText(
+            data: (widget.bmi ?? 0).round().toString(),
+            fontSize: (widget.bmi != null) ? 30 : 0,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class BmiGauge extends StatefulWidget {
+  final double? bmi;
+  const BmiGauge({super.key, required this.bmi});
+
+  @override
+  State<BmiGauge> createState() => _BmiGaugeState();
+}
+
+class _BmiGaugeState extends State<BmiGauge> {
+  bool isActive = false;
+
+  @override
+  void initState() {
+    _startTimer();
+    super.initState();
+  }
+
+  void _startTimer() async {
+    await Future.delayed(Duration(milliseconds: 300));
+    setState(() {
+      isActive = true;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return isActive
+        ? SizedBox(
+            width: 260,
+            height: 300,
+            child: SfRadialGauge(
+              enableLoadingAnimation: true,
+              animationDuration: 1500,
+              axes: <RadialAxis>[
+                RadialAxis(
+                  showLabels: false,
+                  minimum: 10,
+                  maximum: 40,
+                  ranges: <GaugeRange>[
+                    GaugeRange(
+                      startValue: 0,
+                      endValue: 18.5,
+                      color: Colors.blue,
+                      startWidth: 80,
+                      endWidth: 80,
+                    ),
+
+                    GaugeRange(
+                      startValue: 18.5,
+                      endValue: 24.9,
+                      color: Colors.green,
+                      startWidth: 80,
+                      endWidth: 80,
+                    ),
+                    GaugeRange(
+                      startValue: 24.9,
+                      endValue: 30,
+                      color: Colors.orange,
+                      startWidth: 80,
+                      endWidth: 80,
+                    ),
+                    GaugeRange(
+                      startValue: 30,
+                      endValue: 35,
+                      color: const Color.fromARGB(255, 255, 98, 0),
+                      startWidth: 80,
+                      endWidth: 80,
+                    ),
+                    GaugeRange(
+                      startValue: 35,
+                      endValue: 40,
+                      color: const Color.fromARGB(255, 255, 0, 0),
+                      startWidth: 80,
+                      endWidth: 80,
+                    ),
+                  ],
+                  pointers: <GaugePointer>[
+                    NeedlePointer(
+                      value: widget.bmi ?? 11,
+                      enableAnimation: true,
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          )
+        : SizedBox.shrink();
   }
 }
